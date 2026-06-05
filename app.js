@@ -4,6 +4,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbxOpQxNlJO3E9voMNP3Ai2y
 let plots = {};
 let activePlot = null;
 let originalColors = {};
+let plotMapping = {};
+
+async function loadPlotMapping() {
+  try {
+    const response = await fetch('plot-mapping.json');
+    const data = await response.json();
+    plotMapping = data.plotToElementId || {};
+    console.log(`Loaded plot mapping for ${Object.keys(plotMapping).length} plots`);
+  } catch (error) {
+    console.error('Failed to load plot mapping, using default search:', error);
+  }
+}
 
 async function loadSheetData(){
  if(API_URL.startsWith("http")){
@@ -47,28 +59,34 @@ function showPlot(id){
    return;
  }
  
- const allElements = svgDoc.querySelectorAll('*');
- console.log(`Found ${allElements.length} elements in SVG`);
- 
  let plotElement = null;
  
- allElements.forEach(element => {
-   let elementId = null;
+ if(Object.keys(plotMapping).length > 0 && plotMapping[id]) {
+   plotElement = svgDoc.getElementById(plotMapping[id]);
+   console.log(`Looking for element with id="${plotMapping[id]}" for plot ${id}`);
+ } else {
+   const allElements = svgDoc.querySelectorAll('*');
    
-   if(element.tagName === 'text' && element.textContent.trim()) {
-     elementId = element.textContent.replace(/\s/g,'').toUpperCase();
-   } else if(element.id && /^[ABCDE]\d+$/i.test(element.id)) {
-     elementId = element.id.toUpperCase();
-   } else if(element.getAttribute('data-plot')) {
-     elementId = element.getAttribute('data-plot').toUpperCase();
-   } else if(element.textContent && /^[ABCDE]\d+$/i.test(element.textContent.trim())) {
-     elementId = element.textContent.trim().toUpperCase();
-   }
-   
-   if(elementId === id) {
-     plotElement = element;
-   }
- });
+   allElements.forEach(element => {
+     let elementId = null;
+     
+     if(element.tagName === 'text' && element.textContent.trim()) {
+       elementId = element.textContent.replace(/\s/g,'').toUpperCase();
+     } else if(element.id && /^[ABCDE]\d+$/i.test(element.id)) {
+       elementId = element.id.toUpperCase();
+     } else if(element.getAttribute('data-plot')) {
+       elementId = element.getAttribute('data-plot').toUpperCase();
+     } else if(element.getAttribute('data-plot-id')) {
+       elementId = element.getAttribute('data-plot-id').toUpperCase();
+     } else if(element.textContent && /^[ABCDE]\d+$/i.test(element.textContent.trim())) {
+       elementId = element.textContent.trim().toUpperCase();
+     }
+     
+     if(elementId === id) {
+       plotElement = element;
+     }
+   });
+ }
  
  if(!plotElement) {
    console.error(`Plot element not found for id: ${id}`);
@@ -79,7 +97,9 @@ function showPlot(id){
  
  if(activePlot) {
    let prevId = null;
-   if(activePlot.tagName === 'text' && activePlot.textContent.trim()) {
+   if(activePlot.getAttribute('data-plot-id')) {
+     prevId = activePlot.getAttribute('data-plot-id').toUpperCase();
+   } else if(activePlot.tagName === 'text' && activePlot.textContent.trim()) {
      prevId = activePlot.textContent.replace(/\s/g,'').toUpperCase();
    } else if(activePlot.id && /^[ABCDE]\d+$/i.test(activePlot.id)) {
      prevId = activePlot.id.toUpperCase();
@@ -139,7 +159,9 @@ function applyFilter(){
  allElements.forEach(element => {
    let id = null;
    
-   if(element.tagName === 'text' && element.textContent.trim()) {
+   if(element.getAttribute('data-plot-id')) {
+     id = element.getAttribute('data-plot-id').toUpperCase();
+   } else if(element.tagName === 'text' && element.textContent.trim()) {
      id = element.textContent.replace(/\s/g,'').toUpperCase();
    } else if(element.id && /^[ABCDE]\d+$/i.test(element.id)) {
      id = element.id.toUpperCase();
@@ -165,6 +187,7 @@ function applyFilter(){
 document.getElementById('svgObject').addEventListener('load', async ()=>{
  console.log('SVG loaded, initializing...');
  
+ await loadPlotMapping();
  await loadSheetData();
  console.log(`Loaded ${Object.keys(plots).length} plots into memory`);
 
@@ -185,58 +208,84 @@ document.getElementById('svgObject').addEventListener('load', async ()=>{
  const allElements = svgDoc.querySelectorAll('*');
  console.log(`Found ${allElements.length} total elements in SVG`);
  
- allElements.forEach(element => {
-   let id = null;
+ if(Object.keys(plotMapping).length > 0) {
+   console.log('Using plot mapping to find elements...');
    
-   if(element.tagName === 'text' && element.textContent.trim()) {
-     id = element.textContent.replace(/\s/g,'').toUpperCase();
-   } else if(element.id && /^[ABCDE]\d+$/i.test(element.id)) {
-     id = element.id.toUpperCase();
-   } else if(element.getAttribute('data-plot')) {
-     id = element.getAttribute('data-plot').toUpperCase();
-   }
-   
-   if(id && /^[ABCDE]\d+$/.test(id)) {
-      element.style.cursor = 'pointer';
-      const p = plots[id];
-      const color = colorForStatus(p?.Status);
-      element.setAttribute('fill', color);
-      originalColors[id] = color;
-      element.addEventListener('click', ()=> {
-        console.log(`Plot ${id} clicked`);
-        showPlot(id);
-      });
-      plotCount++;
-   }
- });
- 
- if(plotCount === 0) {
-   console.warn('No plot elements found! Checking for alternative patterns...');
-   
-   allElements.forEach(element => {
-     const textContent = element.textContent ? element.textContent.trim() : '';
-     if(textContent && /^[ABCDE]\d+$/i.test(textContent)) {
-       const id = textContent.toUpperCase();
-       console.log(`Found potential plot ID in element content: ${id}`);
+   Object.entries(plotMapping).forEach(([plotId, elementId]) => {
+     const element = svgDoc.getElementById(elementId);
+     if(element) {
        element.style.cursor = 'pointer';
-       const p = plots[id];
+       const p = plots[plotId];
        const color = colorForStatus(p?.Status);
        element.setAttribute('fill', color);
-       originalColors[id] = color;
+       originalColors[plotId] = color;
+       
+       element.setAttribute('data-plot-id', plotId);
        element.addEventListener('click', ()=> {
-         console.log(`Plot ${id} clicked via content`);
-         showPlot(id);
+         console.log(`Plot ${plotId} clicked via mapping`);
+         showPlot(plotId);
        });
        plotCount++;
+     } else {
+       console.warn(`Could not find SVG element with id="${elementId}" for plot ${plotId}`);
      }
    });
+ } else {
+   console.log('No plot mapping found, trying to find plot elements...');
+   
+   allElements.forEach(element => {
+     let id = null;
+     
+     if(element.tagName === 'text' && element.textContent.trim()) {
+       id = element.textContent.replace(/\s/g,'').toUpperCase();
+     } else if(element.id && /^[ABCDE]\d+$/i.test(element.id)) {
+       id = element.id.toUpperCase();
+     } else if(element.getAttribute('data-plot')) {
+       id = element.getAttribute('data-plot').toUpperCase();
+     }
+     
+     if(id && /^[ABCDE]\d+$/.test(id)) {
+        element.style.cursor = 'pointer';
+        const p = plots[id];
+        const color = colorForStatus(p?.Status);
+        element.setAttribute('fill', color);
+        originalColors[id] = color;
+        element.addEventListener('click', ()=> {
+          console.log(`Plot ${id} clicked`);
+          showPlot(id);
+        });
+        plotCount++;
+     }
+   });
+   
+   if(plotCount === 0) {
+     console.warn('No plot elements found! Checking for alternative patterns...');
+     
+     allElements.forEach(element => {
+       const textContent = element.textContent ? element.textContent.trim() : '';
+       if(textContent && /^[ABCDE]\d+$/i.test(textContent)) {
+         const id = textContent.toUpperCase();
+         console.log(`Found potential plot ID in element content: ${id}`);
+         element.style.cursor = 'pointer';
+         const p = plots[id];
+         const color = colorForStatus(p?.Status);
+         element.setAttribute('fill', color);
+         originalColors[id] = color;
+         element.addEventListener('click', ()=> {
+           console.log(`Plot ${id} clicked via content`);
+           showPlot(id);
+         });
+         plotCount++;
+       }
+     });
+   }
  }
  
  console.log(`Initialized ${plotCount} plot elements with click handlers`);
  
  if(plotCount === 0) {
    console.error('CRITICAL: No plot elements could be found in the SVG!');
-   alert('Warning: Could not find any plot elements in the layout. Please check the SVG structure.');
+   alert('Warning: Could not find any plot elements in the layout. Please check the SVG structure and plot-mapping.json file.');
  }
 });
 
@@ -254,7 +303,9 @@ document.addEventListener('DOMContentLoaded', () => {
      
      if(activePlot) {
        let prevId = null;
-       if(activePlot.tagName === 'text' && activePlot.textContent.trim()) {
+       if(activePlot.getAttribute('data-plot-id')) {
+         prevId = activePlot.getAttribute('data-plot-id').toUpperCase();
+       } else if(activePlot.tagName === 'text' && activePlot.textContent.trim()) {
          prevId = activePlot.textContent.replace(/\s/g,'').toUpperCase();
        } else if(activePlot.id && /^[ABCDE]\d+$/i.test(activePlot.id)) {
          prevId = activePlot.id.toUpperCase();

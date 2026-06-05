@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interactive Plot Layout</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+</head>
+<body>
+<header>
+  <h2>Interactive Layout</h2>
+  <input id="searchBox" placeholder="Search Plot (A1, C21...)">
+  <button onclick="searchPlot()">Search</button>
+  <select id="filter" onchange="applyFilter()">
+    <option value="">All</option>
+    <option>Available</option>
+    <option>Booked</option>
+    <option>Hold</option>
+    <option>Sold</option>
+  </select>
+</header>
+
+<div id="legend">
+<span class="available">Available</span>
+<span class="booked">Booked</span>
+<span class="hold">Hold</span>
+<span class="sold">Sold</span>
+</div>
+
+<object id="svgObject" data="layout.svg" type="image/svg+xml"></object>
+
+<div id="panel"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
